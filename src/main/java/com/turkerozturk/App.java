@@ -8,10 +8,12 @@ import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
 import java.text.MessageFormat;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.Date;
 import java.util.List;
 
 public class App {
@@ -173,6 +175,9 @@ public class App {
                 date TEXT,
                 is_marked INTEGER,
                 content TEXT,
+                created INTEGER,
+                modified INTEGER,
+                is_deleted INTEGER,
                 UNIQUE(topic, date) -- UNIQUE kısıtlaması eklendi
             )
         """);
@@ -308,18 +313,21 @@ public class App {
     }
 
     private void toggleCellStatus(String topic, String date) {
+        long currentDateAsEpoch = Instant.now().toEpochMilli();
         try {
             int status = getCellStatus(topic, date);
             if (status == 0) {
                 //PreparedStatement ps = connection.prepareStatement("INSERT INTO activity_log (topic, date, is_marked, content) VALUES (?, ?, 1, ?)");
                 PreparedStatement ps = connection.prepareStatement(
-                        "INSERT INTO activity_log (topic, date, is_marked, content) " +
-                                "VALUES (?, ?, 1, ?) " +
+                        "INSERT INTO activity_log (topic, date, is_marked, content, created, modified, is_deleted) " +
+                                "VALUES (?, ?, 1, ?, ?, ?, 0) " +
                                 "ON CONFLICT(topic, date) DO UPDATE SET is_marked = 1"
                 );
                 ps.setString(1, topic);
                 ps.setString(2, date);
                 ps.setString(3, "");
+                ps.setLong(4, currentDateAsEpoch);
+                ps.setLong(5, currentDateAsEpoch);
 
 
 
@@ -330,14 +338,25 @@ public class App {
 
                 ps.executeUpdate(); // burada hata veriyor turker
             } else if (status == 1) {
-                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 2 WHERE topic = ? AND date = ?");
-                ps.setString(1, topic);
-                ps.setString(2, date);
+                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 2, modified = ? WHERE topic = ? AND date = ?");
+                ps.setLong(1, currentDateAsEpoch);
+                ps.setString(2, topic);
+                ps.setString(3, date);
                 ps.executeUpdate();
-            } else {
-                PreparedStatement ps = connection.prepareStatement("DELETE FROM activity_log WHERE topic = ? AND date = ?");
-                ps.setString(1, topic);
-                ps.setString(2, date);
+            } else if (status == 2) {
+                //PreparedStatement ps = connection.prepareStatement("DELETE FROM activity_log WHERE topic = ? AND date = ?");
+                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 3, modified = ?, is_deleted = 1 WHERE topic = ? AND date = ?");
+
+                ps.setLong(1, currentDateAsEpoch);
+                ps.setString(2, topic);
+                ps.setString(3, date);
+                ps.executeUpdate();
+            } else if (status == 3) {
+                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 1, modified = ?, is_deleted = 0 WHERE topic = ? AND date = ?");
+
+                ps.setLong(1, currentDateAsEpoch);
+                ps.setString(2, topic);
+                ps.setString(3, date);
                 ps.executeUpdate();
             }
         } catch (SQLException e) {
@@ -443,16 +462,23 @@ public class App {
     }
 
     private void updateCellContent(String topic, String date, String content) {
+        long currentDateAsEpoch = Instant.now().toEpochMilli();
+
         try {
             PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO activity_log (topic, date, is_marked, content) " +
-                            "VALUES (?, ?, 0, ?) " +
-                            "ON CONFLICT(topic, date) DO UPDATE SET content = ?"
+                    "INSERT INTO activity_log (topic, date, is_marked, content, created, modified, is_deleted) " +
+                            "VALUES (?, ?, 0, ?, ?, ?, 0) " +
+                            "ON CONFLICT(topic, date) DO UPDATE SET content = ?, modified = ?"
             );
             ps.setString(1, topic);
             ps.setString(2, date);
             ps.setString(3, content); // İlk ekleme için content değeri
-            ps.setString(4, content); // Eğer mevcutsa content'i güncelle
+            ps.setLong(4, currentDateAsEpoch);
+            ps.setLong(5, currentDateAsEpoch);
+
+            ps.setString(6, content); // Eğer mevcutsa content'i güncelle
+            ps.setLong(7, currentDateAsEpoch);
+
             ps.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
