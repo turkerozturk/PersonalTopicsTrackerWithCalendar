@@ -13,7 +13,6 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.Date;
 import java.util.List;
 
 public class App {
@@ -24,7 +23,6 @@ public class App {
     private JTable table;
     private JLabel monthLabel;
 
-    // JLabel ekleme (tooltip yerine gösterilecek)
     private JLabel cellContentLabel;
     private LocalDate currentDate;
     private Map<String, Integer> topicTotals;
@@ -34,13 +32,10 @@ public class App {
     private Connection connection;
 
     public App() {
-        // Set up the database connection
         setupDatabase();
 
-        // Initialize topics
         topics = loadTopics();
 
-        // Initialize GUI components
         frame = new JFrame(bundle.getString("window.title"));
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(800, 600);
@@ -109,7 +104,7 @@ public class App {
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (SwingUtilities.isRightMouseButton(e) ) {
-                    if (e.getClickCount() == 1) { // Çift tıklama kontrolü
+                    if (e.getClickCount() == 1) {
                         int row = table.getSelectedRow();
                         int column = table.getSelectedColumn();
                         YearMonth yearMonth = YearMonth.of(currentDate.getYear(), currentDate.getMonth());
@@ -128,20 +123,15 @@ public class App {
 
         cellContentLabel.setBounds(10, 300, 300, 30);
         cellContentLabel.setHorizontalAlignment(SwingConstants.LEFT);
-        //cellContentLabel.setMinimumSize(new Dimension(20,20));
 
-        // Tooltip eklemek için MouseMotionListener ekleyin
         table.addMouseMotionListener(new MouseMotionAdapter() {
             public void mouseMoved(MouseEvent e) {
                 int row = table.rowAtPoint(e.getPoint());
                 int column = table.columnAtPoint(e.getPoint());
 
-                // Tooltip metnini hücre içeriği olarak ayarla
                 if (row >= 0 && column >= 0) {
                     Object value = table.getValueAt(row, column);
-                    table.setToolTipText(value != null ? value.toString() : ""); // uncomment if you want to see tooltip hover
-                    //System.out.println(value != null ? value.toString() : "");
-                    // JLabel metnini de güncelle
+                    table.setToolTipText(value != null ? value.toString() : "");
                     if (value != null) {
                         cellContentLabel.setText(" "+ value.toString()); //Hovered text: //this space char is to hold the placeholder height of the label
                     } else {
@@ -167,22 +157,21 @@ public class App {
             connection = DriverManager.getConnection("jdbc:sqlite:calendar_tracker.db");
             Statement statement = connection.createStatement();
 
-            // activity_log tablosunu oluştur veya güncelle
             statement.execute("""
             CREATE TABLE IF NOT EXISTS activity_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                topic TEXT,
+                topic_id INTEGER,
                 date TEXT,
                 is_marked INTEGER,
                 content TEXT,
                 created INTEGER,
                 modified INTEGER,
                 is_deleted INTEGER,
-                UNIQUE(topic, date) -- UNIQUE kısıtlaması eklendi
+                UNIQUE(topic_id, date),
+                FOREIGN KEY(topic_id) REFERENCES topics(id)
             )
         """);
 
-            // topics tablosunu oluştur veya güncelle
             statement.execute("""
             CREATE TABLE IF NOT EXISTS topics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -209,14 +198,9 @@ public class App {
     }
 
     private void updateMonthLabel() {
-        //monthLabel.setText(currentDate.getMonth().toString() + " " + currentDate.getYear());
-        // Locale bilgisini application.properties dosyasından al
         String localeCode = bundle.getString("app.locale");
         Locale locale = new Locale(localeCode);
 
-
-
-        // Ay ve yılı locale'e göre biçimlendir
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM yyyy", locale);
         String formattedDate = currentDate.format(formatter);
         monthLabel.setText(formattedDate);
@@ -250,9 +234,8 @@ public class App {
                 String date = currentDate.withDayOfMonth(day).toString();
 
                 try {
-                    // Veritabanından content sütununu alın
                     PreparedStatement ps = connection.prepareStatement(
-                            "SELECT content FROM activity_log WHERE topic = ? AND date = ?");
+                            "SELECT content FROM activity_log WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
                     ps.setString(1, topic);
                     ps.setString(2, date);
                     ResultSet rs = ps.executeQuery();
@@ -266,7 +249,7 @@ public class App {
                 }
             }
         }
-
+/*
         tableModel.addTableModelListener(e -> {
             int row = e.getFirstRow();
             int column = e.getColumn();
@@ -274,12 +257,29 @@ public class App {
                 String topic = (String) tableModel.getValueAt(row, 0);
                 String date = currentDate.withDayOfMonth(column).toString();
                 String content = (String) tableModel.getValueAt(row, column);
-                //System.out.println(content);
                 updateCellContent(topic, date, content);
             }
         });
+        */
 
-        // adjust column widths
+        tableModel.addTableModelListener(e -> {
+            int row = e.getFirstRow();
+            int column = e.getColumn();
+            if (column > 0 && column < tableModel.getColumnCount() - 1) {
+                String topic = (String) tableModel.getValueAt(row, 0); // İlk sütun topic ismini içeriyor
+                long topicId = getTopicIdByName(topic); // Topic ismine göre ID'yi al
+                if (topicId == -1) {
+                    System.err.println("Topic ID bulunamadı: " + topic);
+                    return; // ID bulunamazsa işlemi durdur
+                }
+                String date = currentDate.withDayOfMonth(column).toString();
+                String content = (String) tableModel.getValueAt(row, column);
+                updateCellContent(topicId, date, content); // topicId ile hücre içeriğini güncelle
+            }
+        });
+
+
+
         SwingUtilities.invokeLater(() -> {
             table.getColumnModel().getColumn(0).setMinWidth(100);
             DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
@@ -293,13 +293,29 @@ public class App {
 
         });
 
-
         updateTotals();
+    }
+
+
+    private long getTopicIdByName(String topicName) {
+        try {
+            PreparedStatement ps = connection.prepareStatement(
+                    "SELECT id FROM topics WHERE name = ?"
+            );
+            ps.setString(1, topicName);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getLong("id");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return -1; // Hata durumunda geçersiz bir değer döndür
     }
 
     private int getCellStatus(String topic, String date) {
         try {
-            PreparedStatement ps = connection.prepareStatement("SELECT is_marked, content FROM activity_log WHERE topic = ? AND date = ?");
+            PreparedStatement ps = connection.prepareStatement("SELECT is_marked FROM activity_log WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
             ps.setString(1, topic);
             ps.setString(2, date);
             ResultSet rs = ps.executeQuery();
@@ -317,42 +333,32 @@ public class App {
         try {
             int status = getCellStatus(topic, date);
             if (status == 0) {
-                //PreparedStatement ps = connection.prepareStatement("INSERT INTO activity_log (topic, date, is_marked, content) VALUES (?, ?, 1, ?)");
                 PreparedStatement ps = connection.prepareStatement(
-                        "INSERT INTO activity_log (topic, date, is_marked, content, created, modified, is_deleted) " +
-                                "VALUES (?, ?, 1, ?, ?, ?, 0) " +
-                                "ON CONFLICT(topic, date) DO UPDATE SET is_marked = 1"
+                        "INSERT INTO activity_log (topic_id, date, is_marked, content, created, modified, is_deleted) " +
+                                "VALUES ((SELECT id FROM topics WHERE name = ?), ?, 1, ?, ?, ?, 0) " +
+                                "ON CONFLICT(topic_id, date) DO UPDATE SET is_marked = 1"
                 );
                 ps.setString(1, topic);
                 ps.setString(2, date);
                 ps.setString(3, "");
                 ps.setLong(4, currentDateAsEpoch);
                 ps.setLong(5, currentDateAsEpoch);
-
-
-
-
-
-
-
-
-                ps.executeUpdate(); // burada hata veriyor turker
+                ps.executeUpdate();
             } else if (status == 1) {
-                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 2, modified = ? WHERE topic = ? AND date = ?");
+                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 2, modified = ? WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
                 ps.setLong(1, currentDateAsEpoch);
                 ps.setString(2, topic);
                 ps.setString(3, date);
                 ps.executeUpdate();
             } else if (status == 2) {
-                //PreparedStatement ps = connection.prepareStatement("DELETE FROM activity_log WHERE topic = ? AND date = ?");
-                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 3, modified = ?, is_deleted = 1 WHERE topic = ? AND date = ?");
+                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 3, modified = ?, is_deleted = 1 WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
 
                 ps.setLong(1, currentDateAsEpoch);
                 ps.setString(2, topic);
                 ps.setString(3, date);
                 ps.executeUpdate();
             } else if (status == 3) {
-                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 1, modified = ?, is_deleted = 0 WHERE topic = ? AND date = ?");
+                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 1, modified = ?, is_deleted = 0 WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
 
                 ps.setLong(1, currentDateAsEpoch);
                 ps.setString(2, topic);
@@ -378,7 +384,6 @@ public class App {
             tableModel.setValueAt(total, i, tableModel.getColumnCount() - 1);
         }
     }
-
     private void manageTopics() {
         JFrame manageFrame = new JFrame("Konu Yönetimi");
         manageFrame.setSize(400, 300);
@@ -393,7 +398,6 @@ public class App {
         JButton renameButton = new JButton(bundle.getString("button.rename.topic"));
 
         addButton.addActionListener(e -> {
-            // Özel düğme metinlerini belirle
             Object[] options = {bundle.getString("dialog.button.ok"), bundle.getString("dialog.button.cancel")};
 
             String newTopic = JOptionPane.showInputDialog(manageFrame, bundle.getString("dialog.label.add.topic.name"));
@@ -415,11 +419,36 @@ public class App {
             String selectedTopic = topicList.getSelectedValue();
             if (selectedTopic != null) {
                 int confirm = JOptionPane.showConfirmDialog(manageFrame, MessageFormat.format(bundle.getString("confirm.are.you.sure.to.delete.topic"), selectedTopic), bundle.getString("dialog.delete.confirmation.title"), JOptionPane.YES_NO_OPTION);
+
+
+
                 if (confirm == JOptionPane.YES_OPTION) {
                     try {
-                        PreparedStatement ps = connection.prepareStatement("DELETE FROM topics WHERE name = ?");
-                        ps.setString(1, selectedTopic);
-                        ps.executeUpdate();
+                        // Önce topic_id'yi al
+                        PreparedStatement getTopicIdPs = connection.prepareStatement(
+                                "SELECT id FROM topics WHERE name = ?"
+                        );
+                        getTopicIdPs.setString(1, selectedTopic);
+                        ResultSet rs = getTopicIdPs.executeQuery();
+                        if (rs.next()) {
+                            long topicId = rs.getLong("id");
+
+                            // activity_log tablosundaki ilişkili kayıtları sil
+                            PreparedStatement deleteActivityLogPs = connection.prepareStatement(
+                                    "DELETE FROM activity_log WHERE topic_id = ?"
+                            );
+                            deleteActivityLogPs.setLong(1, topicId);
+                            deleteActivityLogPs.executeUpdate();
+                        }
+
+                        // Ardından topic tablosundaki kaydı sil
+                        PreparedStatement deleteTopicPs = connection.prepareStatement(
+                                "DELETE FROM topics WHERE name = ?"
+                        );
+                        deleteTopicPs.setString(1, selectedTopic);
+                        deleteTopicPs.executeUpdate();
+
+                        // Listeyi ve tabloyu güncelle
                         topics.remove(selectedTopic);
                         listModel.removeElement(selectedTopic);
                         updateTable();
@@ -427,6 +456,9 @@ public class App {
                         ex.printStackTrace();
                     }
                 }
+
+
+
             }
         });
 
@@ -461,16 +493,19 @@ public class App {
         manageFrame.setVisible(true);
     }
 
-    private void updateCellContent(String topic, String date, String content) {
+
+
+
+    private void updateCellContent(long topicId, String date, String content) {
         long currentDateAsEpoch = Instant.now().toEpochMilli();
 
         try {
             PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO activity_log (topic, date, is_marked, content, created, modified, is_deleted) " +
+                    "INSERT INTO activity_log (topic_id, date, is_marked, content, created, modified, is_deleted) " +
                             "VALUES (?, ?, 0, ?, ?, ?, 0) " +
-                            "ON CONFLICT(topic, date) DO UPDATE SET content = ?, modified = ?"
+                            "ON CONFLICT(topic_id, date) DO UPDATE SET content = ?, modified = ?"
             );
-            ps.setString(1, topic);
+            ps.setLong(1, topicId);
             ps.setString(2, date);
             ps.setString(3, content); // İlk ekleme için content değeri
             ps.setLong(4, currentDateAsEpoch);
@@ -484,6 +519,9 @@ public class App {
             e.printStackTrace();
         }
     }
+
+
+
 
 
 
