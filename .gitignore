@@ -1,3 +1,4 @@
 /target/
 /calendar_tracker.db
 /.idea/
+/dependency-reduced-pom.xml

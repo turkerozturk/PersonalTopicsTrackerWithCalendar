@@ -165,27 +165,23 @@ public class App {
             connection = DriverManager.getConnection("jdbc:sqlite:calendar_tracker.db");
             Statement statement = connection.createStatement();
 
-            statement.execute("""
-            CREATE TABLE IF NOT EXISTS activity_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                topic_id INTEGER,
-                date TEXT,
-                is_marked INTEGER,
-                content TEXT,
-                created INTEGER,
-                modified INTEGER,
-                is_deleted INTEGER,
-                UNIQUE(topic_id, date),
-                FOREIGN KEY(topic_id) REFERENCES topics(id)
-            )
-        """);
+            statement.execute("    CREATE TABLE IF NOT EXISTS activity_log (\n" +
+                              "        id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
+                              "        topic_id INTEGER,\n" +
+                              "        date TEXT,\n" +
+                              "        is_marked INTEGER,\n" +
+                              "        content TEXT,\n" +
+                              "        created INTEGER,\n" +
+                              "        modified INTEGER,\n" +
+                              "        is_deleted INTEGER,\n" +
+                              "        UNIQUE(topic_id, date),\n" +
+                              "        FOREIGN KEY(topic_id) REFERENCES topics(id)\n" +
+                              "    )\n");
 
-            statement.execute("""
-            CREATE TABLE IF NOT EXISTS topics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE
-            )
-        """);
+            statement.execute("    CREATE TABLE IF NOT EXISTS topics (\n" +
+                              "        id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
+                              "        name TEXT UNIQUE\n" +
+                              "    )\n");
         } catch (SQLException e) {
             e.printStackTrace();
         }
