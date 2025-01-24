@@ -84,6 +84,8 @@ When navigating between months, there may be a delay in displaying data, as all 
 
 When the mouse pointer hovers over a cell, any text within the cell is displayed both in the upper-left area outside the table and as a tooltip near the mouse cursor.
 
+It performs alphabetical sorting in ascending or descending order when the column headers are clicked.
+
 Example Usage
 
     Tracking Workouts:
