@@ -11,7 +11,10 @@ import java.text.MessageFormat;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.List;
 
@@ -38,7 +41,7 @@ public class App {
 
         frame = new JFrame(bundle.getString("window.title"));
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(800, 600);
+        frame.setSize(1000, 600);
 
         currentDate = LocalDate.now();
         topicTotals = new HashMap<>();
@@ -108,11 +111,16 @@ public class App {
                         int row = table.getSelectedRow();
                         int column = table.getSelectedColumn();
                         YearMonth yearMonth = YearMonth.of(currentDate.getYear(), currentDate.getMonth());
-                        if (column > 0 && column <= yearMonth.lengthOfMonth()) {
+                        int daysInMonth = yearMonth.lengthOfMonth();
+
+                        if (column > 0 && column <= daysInMonth) {
                             String topic = (String) table.getValueAt(row, 0);
                             String date = currentDate.withDayOfMonth(column).toString();
                             toggleCellStatus(topic, date);
                             updateTotals();
+                            String whenLast = updateWhenLast(topic);
+                            tableModel.setValueAt(whenLast, row, tableModel.getColumnCount() - 1);
+
                             table.repaint();
                         }
                     }
@@ -217,18 +225,21 @@ public class App {
         YearMonth yearMonth = YearMonth.of(currentDate.getYear(), currentDate.getMonth());
         int daysInMonth = yearMonth.lengthOfMonth();
 
-        String[] columnNames = new String[daysInMonth + 2];
+        String[] columnNames = new String[daysInMonth + 3]; // Ekstra sütun için alan ayır
         columnNames[0] = bundle.getString("cell.topic.header");
         for (int i = 1; i <= daysInMonth; i++) {
             columnNames[i] = String.valueOf(i);
         }
-        columnNames[daysInMonth + 1] = bundle.getString("cell.monthly.sum");
+        columnNames[daysInMonth + 1] = bundle.getString("cell.monthly.sum.header");
+        columnNames[daysInMonth + 2] = bundle.getString("cell.when.last.header");
 
         tableModel.setDataVector(new Object[topics.size()][columnNames.length], columnNames);
 
-        for (int i = 0; i < topics.size(); i++) {
-            String topic = topics.get(i);
-            tableModel.setValueAt(topic, i, 0);
+
+
+        for (int swingTableRowNumber = 0; swingTableRowNumber < topics.size(); swingTableRowNumber++) {
+            String topic = topics.get(swingTableRowNumber);
+            tableModel.setValueAt(topic, swingTableRowNumber, 0);
 
             for (int day = 1; day <= daysInMonth; day++) {
                 String date = currentDate.withDayOfMonth(day).toString();
@@ -242,30 +253,25 @@ public class App {
 
                     if (rs.next()) {
                         String content = rs.getString("content");
-                        tableModel.setValueAt(content, i, day); // Hücreye content yükle
+                        tableModel.setValueAt(content, swingTableRowNumber, day); // Hücreye content yükle
                     }
                 } catch (SQLException e) {
                     e.printStackTrace();
                 }
             }
+
+
+            // when last
+            String whenLast = updateWhenLast(topic);
+            tableModel.setValueAt(whenLast, swingTableRowNumber, tableModel.getColumnCount() - 1);
+
+
         }
-/*
-        tableModel.addTableModelListener(e -> {
-            int row = e.getFirstRow();
-            int column = e.getColumn();
-            if (column > 0 && column < tableModel.getColumnCount() - 1) {
-                String topic = (String) tableModel.getValueAt(row, 0);
-                String date = currentDate.withDayOfMonth(column).toString();
-                String content = (String) tableModel.getValueAt(row, column);
-                updateCellContent(topic, date, content);
-            }
-        });
-        */
 
         tableModel.addTableModelListener(e -> {
             int row = e.getFirstRow();
             int column = e.getColumn();
-            if (column > 0 && column < tableModel.getColumnCount() - 1) {
+            if (column > 0 && column < tableModel.getColumnCount() - 2) { // Monthly Sum ve When Last'i dışarıda tut
                 String topic = (String) tableModel.getValueAt(row, 0); // İlk sütun topic ismini içeriyor
                 long topicId = getTopicIdByName(topic); // Topic ismine göre ID'yi al
                 if (topicId == -1) {
@@ -278,23 +284,69 @@ public class App {
             }
         });
 
-
-
         SwingUtilities.invokeLater(() -> {
             table.getColumnModel().getColumn(0).setMinWidth(100);
+            table.getColumnModel().getColumn(0).setMaxWidth(100);
+
             DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
             centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
-            for (int i = 1; i < daysInMonth; i++) {
-                table.getColumnModel().getColumn(i).setMinWidth(15);
+            for (int i = 1; i <= daysInMonth; i++) {
+                table.getColumnModel().getColumn(i).setMinWidth(20);
+                table.getColumnModel().getColumn(i).setMaxWidth(20);
+
                 table.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
             }
             table.getColumnModel().getColumn(daysInMonth + 1).setMinWidth(75);
-            table.getColumnModel().getColumn(daysInMonth + 1).setCellRenderer(centerRenderer);
+            table.getColumnModel().getColumn(daysInMonth + 1).setMaxWidth(75);
 
+            table.getColumnModel().getColumn(daysInMonth + 1).setCellRenderer(centerRenderer);
+            table.getColumnModel().getColumn(daysInMonth + 2).setMinWidth(150); // When Last sütunu genişliği
+            table.getColumnModel().getColumn(daysInMonth + 2).setMaxWidth(150); // When Last sütunu genişliği
+
+            //table.getColumnModel().getColumn(daysInMonth + 2).setCellRenderer(centerRenderer);
         });
 
         updateTotals();
     }
+
+
+    private String updateWhenLast(String topic) {
+        String whenLastValue = "N/A"; // Varsayılan değer
+
+        YearMonth yearMonth = YearMonth.of(currentDate.getYear(), currentDate.getMonth());
+        int daysInMonth = yearMonth.lengthOfMonth();
+        // When Last sütununu hesapla ve ekle
+        try {
+            PreparedStatement lastModifiedPs = connection.prepareStatement(
+                    "SELECT MAX(date) AS max_date FROM activity_log WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND is_marked = 1"
+            );
+            lastModifiedPs.setString(1, topic);
+            ResultSet lastModifiedRs = lastModifiedPs.executeQuery();
+
+            if (lastModifiedRs.next()) {
+                String maxDateString = lastModifiedRs.getString("max_date");
+                if (maxDateString != null && !maxDateString.isEmpty()) {
+                    // String değeri LocalDate'e dönüştür
+                    LocalDate maxDate = LocalDate.parse(maxDateString);
+                    LocalDate currentDateLocal = LocalDate.now();
+                    long daysDifference = ChronoUnit.DAYS.between(maxDate, currentDateLocal);
+                    daysDifference = -1 * daysDifference;
+                    // Hücre değeri: Tarih ve gün farkı
+                    whenLastValue = String.format("%s (%+d days)", maxDate, daysDifference);
+                    //System.out.println(whenLastValue);
+                }
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } catch (DateTimeParseException e) {
+            System.err.println("Tarih formatı hatalı: " + e.getMessage());
+        }
+
+        return whenLastValue;
+
+    }
+
 
 
     private long getTopicIdByName(String topicName) {
@@ -370,6 +422,7 @@ public class App {
         }
     }
 
+
     private void updateTotals() {
         for (int i = 0; i < topics.size(); i++) {
             String topic = topics.get(i);
@@ -381,12 +434,17 @@ public class App {
                     total++;
                 }
             }
-            tableModel.setValueAt(total, i, tableModel.getColumnCount() - 1);
+            tableModel.setValueAt(total, i, tableModel.getColumnCount() - 2);
         }
     }
+
+    private void updateWhenLasts() {
+
+    }
+
     private void manageTopics() {
         JFrame manageFrame = new JFrame("Konu Yönetimi");
-        manageFrame.setSize(400, 300);
+        manageFrame.setSize(400, 200);
         manageFrame.setLayout(new BorderLayout());
 
         DefaultListModel<String> listModel = new DefaultListModel<>();
