@@ -4,6 +4,7 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
@@ -102,6 +103,10 @@ public class App {
                 return c;
             }
         };
+
+        // Sıralayıcı ekleniyor
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
+        table.setRowSorter(sorter);
 
         table.addMouseListener(new MouseAdapter() {
             @Override
@@ -430,7 +435,7 @@ public class App {
                     total++;
                 }
             }
-            tableModel.setValueAt(total, i, tableModel.getColumnCount() - 2);
+            tableModel.setValueAt(String.format("%02d", total), i, tableModel.getColumnCount() - 2);
         }
     }
 
@@ -439,7 +444,7 @@ public class App {
     }
 
     private void manageTopics() {
-        JFrame manageFrame = new JFrame("Konu Yönetimi");
+        JFrame manageFrame = new JFrame(bundle.getString("window.title.topic.management"));
         manageFrame.setSize(400, 200);
         manageFrame.setLayout(new BorderLayout());
 
