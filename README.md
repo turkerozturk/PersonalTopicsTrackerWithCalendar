@@ -12,6 +12,9 @@ https://github.com/turkerozturk/PersonalTopicsTrackerWithCalendar/releases/tag/v
 
 ![Screenshot](screenshot.jpg)
 
+![Screenshot](screenshot2.jpg)
+
+
 ## Features
 
 Calendar-Based Tracking: View and log your daily activity for different topics in a calendar layout.
