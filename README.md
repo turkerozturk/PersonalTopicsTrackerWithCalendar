@@ -3,12 +3,16 @@
 Personal Topics Tracker with Calendar is a desktop application designed to help you track your daily activities, workouts, and other topics in an easy-to-use calendar view. The application allows you to log, update, and analyze your progress across various topics on a monthly basis.
 
 ### Direct Download
-    
-https://github.com/turkerozturk/PersonalTopicsTrackerWithCalendar/releases/download/v1.0-SNAPSHOT/PersonalTopicsTrackerWithCalendar-1.0-SNAPSHOT.jar
+
+The EXE file is not native. Java 1.8 is required too.
+
+https://github.com/turkerozturk/PersonalTopicsTrackerWithCalendar/releases/download/v1.0.1-SNAPSHOT/PersonalTopicsTrackerWithCalendar-1.0.1-SNAPSHOT.exe
+
+https://github.com/turkerozturk/PersonalTopicsTrackerWithCalendar/releases/download/v1.0.1-SNAPSHOT/PersonalTopicsTrackerWithCalendar-1.0.1-SNAPSHOT.jar
 
 ### Release Notes
-    
-https://github.com/turkerozturk/PersonalTopicsTrackerWithCalendar/releases/tag/v1.0-SNAPSHOT
+
+https://github.com/turkerozturk/PersonalTopicsTrackerWithCalendar/releases/tag/v1.0.1-SNAPSHOT
 
 ![Screenshot](screenshot.jpg)
 
