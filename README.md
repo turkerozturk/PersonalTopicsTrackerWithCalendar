@@ -18,6 +18,7 @@ Calendar-Based Tracking: View and log your daily activity for different topics i
 
 Topic Management: Add, delete, or rename topics using the "Topic Manager" window.
 
+
 ### Data Overview:
 
 Monthly Sum: Automatically calculates the total number of the cells with green background color for each topic in a given month.
@@ -66,7 +67,11 @@ Open the "Topic Manager" window to:
     Delete: Remove existing topics and all related log data.
     Rename: Update the name of a topic.
 
-3. Understanding Columns:
+3. Filter topics:
+
+Use the search box to filter topics by contains text.
+
+4. Understanding Columns:
 
 Topic: The name of the activity or topic you are tracking.
 Calendar Days: Each day of the current month. Cells display activity counts or descriptions.
