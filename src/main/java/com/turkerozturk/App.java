@@ -6,18 +6,16 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableRowSorter;
 import java.awt.*;
-import java.awt.event.*;
-import java.sql.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
+import java.sql.Connection;
 import java.text.MessageFormat;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 
 public class App {
 
@@ -39,10 +37,13 @@ public class App {
 
     private Connection connection;
 
-    public App() {
-        setupDatabase();
+    private Database database;
 
-        topics = loadTopics();
+    public App() {
+        database = new Database(connection);
+        database.setupDatabase();
+
+        topics = database.loadTopics();
 
         frame = new JFrame(bundle.getString("window.title"));
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -108,7 +109,7 @@ public class App {
                     YearMonth yearMonth = YearMonth.of(currentDate.getYear(), currentDate.getMonth());
                     if (column <= yearMonth.lengthOfMonth()) {
                         String date = currentDate.withDayOfMonth(column).toString();
-                        int status = getCellStatus(topic, date);
+                        int status = database.getCellStatus(topic, date);
                         if (status == 1) {
                             c.setBackground(Color.GREEN);
                         } else if (status == 2) {
@@ -163,9 +164,9 @@ public class App {
                         if (column > 0 && column <= daysInMonth) {
                             String topic = (String) table.getValueAt(row, 0);
                             String date = currentDate.withDayOfMonth(column).toString();
-                            toggleCellStatus(topic, date);
+                            database.toggleCellStatus(topic, date);
                             updateTotals();
-                            String whenLast = updateWhenLast(topic);
+                            String whenLast = database.updateWhenLast(topic, currentDate);
                             tableModel.setValueAt(whenLast, row, tableModel.getColumnCount() - 1);
 
                             table.repaint();
@@ -176,8 +177,7 @@ public class App {
         });
 
 
-        //cellContentLabel.setBounds(10, 300, 300, 30);
-        //cellContentLabel.setHorizontalAlignment(SwingConstants.LEFT);
+
 
         table.addMouseMotionListener(new MouseMotionAdapter() {
             public void mouseMoved(MouseEvent e) {
@@ -218,7 +218,7 @@ public class App {
 
         //frame.add(scrollPane);
 
-        updateTable();
+        updateTable(database.getConnection());
 
         frame.setVisible(true);
     }
@@ -232,47 +232,9 @@ public class App {
         }
     }
 
-    private void setupDatabase() {
-        try {
-            connection = DriverManager.getConnection("jdbc:sqlite:calendar_tracker.db");
-            Statement statement = connection.createStatement();
 
-            statement.execute("    CREATE TABLE IF NOT EXISTS activity_log (\n" +
-                              "        id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
-                              "        topic_id INTEGER,\n" +
-                              "        date TEXT,\n" +
-                              "        is_marked INTEGER,\n" +
-                              "        content TEXT,\n" +
-                              "        created INTEGER,\n" +
-                              "        modified INTEGER,\n" +
-                              "        is_deleted INTEGER,\n" +
-                              "        UNIQUE(topic_id, date),\n" +
-                              "        FOREIGN KEY(topic_id) REFERENCES topics(id)\n" +
-                              "    )\n");
 
-            statement.execute("    CREATE TABLE IF NOT EXISTS topics (\n" +
-                              "        id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
-                              "        name TEXT UNIQUE\n" +
-                              "    )\n");
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
 
-    // db
-    private List<String> loadTopics() {
-        List<String> loadedTopics = new ArrayList<>();
-        try {
-            Statement statement = connection.createStatement();
-            ResultSet rs = statement.executeQuery("SELECT name FROM topics");
-            while (rs.next()) {
-                loadedTopics.add(rs.getString("name"));
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return loadedTopics;
-    }
 
     private String updateMonthLabel() {
         String localeCode = bundle.getString("app.locale");
@@ -287,11 +249,11 @@ public class App {
         currentDate = currentDate.plusMonths(delta);
         String formattedDate = updateMonthLabel();
         monthLabel.setText(formattedDate);
-        updateTable();
+        updateTable(database.getConnection());
         filterTable();
     }
 
-    private void updateTable() {
+    private void updateTable(Connection connection) {
         YearMonth yearMonth = YearMonth.of(currentDate.getYear(), currentDate.getMonth());
         int daysInMonth = yearMonth.lengthOfMonth();
 
@@ -314,25 +276,14 @@ public class App {
             for (int day = 1; day <= daysInMonth; day++) {
                 String date = currentDate.withDayOfMonth(day).toString();
 
-                try {
-                    PreparedStatement ps = connection.prepareStatement(
-                            "SELECT content FROM activity_log WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
-                    ps.setString(1, topic);
-                    ps.setString(2, date);
-                    ResultSet rs = ps.executeQuery();
+                String content = database.getContent(topic, date);
+                tableModel.setValueAt(content, swingTableRowNumber, day); // Hücreye content yükle
 
-                    if (rs.next()) {
-                        String content = rs.getString("content");
-                        tableModel.setValueAt(content, swingTableRowNumber, day); // Hücreye content yükle
-                    }
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
             }
 
 
             // when last
-            String whenLast = updateWhenLast(topic);
+            String whenLast = database.updateWhenLast(topic, currentDate); //turker
             tableModel.setValueAt(whenLast, swingTableRowNumber, tableModel.getColumnCount() - 1);
 
 
@@ -343,14 +294,14 @@ public class App {
             int column = e.getColumn();
             if (column > 0 && column < tableModel.getColumnCount() - 2) { // Monthly Sum ve When Last'i dışarıda tut
                 String topic = (String) tableModel.getValueAt(row, 0); // İlk sütun topic ismini içeriyor
-                long topicId = getTopicIdByName(topic); // Topic ismine göre ID'yi al
+                long topicId = database.getTopicIdByName(topic); // Topic ismine göre ID'yi al
                 if (topicId == -1) {
                     System.err.println("Topic ID bulunamadı: " + topic);
                     return; // ID bulunamazsa işlemi durdur
                 }
                 String date = currentDate.withDayOfMonth(column).toString();
                 String content = (String) tableModel.getValueAt(row, column);
-                updateCellContent(topicId, date, content); // topicId ile hücre içeriğini güncelle
+                database.updateCellContent(topicId, date, content); // topicId ile hücre içeriğini güncelle
             }
         });
 
@@ -380,121 +331,9 @@ public class App {
     }
 
 
-    // db
-    private String updateWhenLast(String topic) {
-        String whenLastValue = "N/A"; // Varsayılan değer
-
-        YearMonth yearMonth = YearMonth.of(currentDate.getYear(), currentDate.getMonth());
-        int daysInMonth = yearMonth.lengthOfMonth();
-        // When Last sütununu hesapla ve ekle
-        try {
-            PreparedStatement lastModifiedPs = connection.prepareStatement(
-                    "SELECT MAX(date) AS max_date FROM activity_log WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND is_marked = 1"
-            );
-            lastModifiedPs.setString(1, topic);
-            ResultSet lastModifiedRs = lastModifiedPs.executeQuery();
-
-            if (lastModifiedRs.next()) {
-                String maxDateString = lastModifiedRs.getString("max_date");
-                if (maxDateString != null && !maxDateString.isEmpty()) {
-                    // String değeri LocalDate'e dönüştür
-                    LocalDate maxDate = LocalDate.parse(maxDateString);
-                    LocalDate currentDateLocal = LocalDate.now();
-                    long daysDifference = ChronoUnit.DAYS.between(maxDate, currentDateLocal);
-                    daysDifference = -1 * daysDifference;
-                    // Hücre değeri: Tarih ve gün farkı
-                    whenLastValue = String.format("%s (%+d days)", maxDate, daysDifference);
-                    //System.out.println(whenLastValue);
-                }
-            }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } catch (DateTimeParseException e) {
-            System.err.println("Tarih formatı hatalı: " + e.getMessage());
-        }
-
-        return whenLastValue;
-
-    }
 
 
 
-    // db
-    private long getTopicIdByName(String topicName) {
-        try {
-            PreparedStatement ps = connection.prepareStatement(
-                    "SELECT id FROM topics WHERE name = ?"
-            );
-            ps.setString(1, topicName);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                return rs.getLong("id");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return -1; // Hata durumunda geçersiz bir değer döndür
-    }
-
-    // db
-    private int getCellStatus(String topic, String date) {
-        try {
-            PreparedStatement ps = connection.prepareStatement("SELECT is_marked FROM activity_log WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
-            ps.setString(1, topic);
-            ps.setString(2, date);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                return rs.getInt("is_marked");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return 0;
-    }
-
-    // db
-    private void toggleCellStatus(String topic, String date) {
-        long currentDateAsEpoch = Instant.now().toEpochMilli();
-        try {
-            int status = getCellStatus(topic, date);
-            if (status == 0) {
-                PreparedStatement ps = connection.prepareStatement(
-                        "INSERT INTO activity_log (topic_id, date, is_marked, content, created, modified, is_deleted) " +
-                                "VALUES ((SELECT id FROM topics WHERE name = ?), ?, 1, ?, ?, ?, 0) " +
-                                "ON CONFLICT(topic_id, date) DO UPDATE SET is_marked = 1"
-                );
-                ps.setString(1, topic);
-                ps.setString(2, date);
-                ps.setString(3, "");
-                ps.setLong(4, currentDateAsEpoch);
-                ps.setLong(5, currentDateAsEpoch);
-                ps.executeUpdate();
-            } else if (status == 1) {
-                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 2, modified = ? WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
-                ps.setLong(1, currentDateAsEpoch);
-                ps.setString(2, topic);
-                ps.setString(3, date);
-                ps.executeUpdate();
-            } else if (status == 2) {
-                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 3, modified = ?, is_deleted = 1 WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
-
-                ps.setLong(1, currentDateAsEpoch);
-                ps.setString(2, topic);
-                ps.setString(3, date);
-                ps.executeUpdate();
-            } else if (status == 3) {
-                PreparedStatement ps = connection.prepareStatement("UPDATE activity_log SET is_marked = 1, modified = ?, is_deleted = 0 WHERE topic_id = (SELECT id FROM topics WHERE name = ?) AND date = ?");
-
-                ps.setLong(1, currentDateAsEpoch);
-                ps.setString(2, topic);
-                ps.setString(3, date);
-                ps.executeUpdate();
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
 
 
     private void updateTotals() {
@@ -504,7 +343,7 @@ public class App {
             YearMonth yearMonth = YearMonth.of(currentDate.getYear(), currentDate.getMonth());
             for (int day = 1; day <= yearMonth.lengthOfMonth(); day++) {
                 String date = currentDate.withDayOfMonth(day).toString();
-                if (getCellStatus(topic, date) == 1) {
+                if (database.getCellStatus(topic, date) == 1) {
                     total++;
                 }
             }
@@ -533,18 +372,11 @@ public class App {
             Object[] options = {bundle.getString("dialog.button.ok"), bundle.getString("dialog.button.cancel")};
 
             String newTopic = JOptionPane.showInputDialog(manageFrame, bundle.getString("dialog.label.add.topic.name"));
-            if (newTopic != null && !newTopic.trim().isEmpty() && !topics.contains(newTopic)) {
-                try {
-                    PreparedStatement ps = connection.prepareStatement("INSERT INTO topics (name) VALUES (?)");
-                    ps.setString(1, newTopic);
-                    ps.executeUpdate();
-                    topics.add(newTopic);
-                    listModel.addElement(newTopic);
-                    updateTable();
-                } catch (SQLException ex) {
-                    ex.printStackTrace();
-                }
+            if(database.addTopic(newTopic, topics)) {
+                listModel.addElement(newTopic);
+                updateTable(database.getConnection());
             }
+
         });
 
         removeButton.addActionListener(e -> {
@@ -555,39 +387,18 @@ public class App {
 
 
                 if (confirm == JOptionPane.YES_OPTION) {
-                    try {
-                        // Önce topic_id'yi al
-                        PreparedStatement getTopicIdPs = connection.prepareStatement(
-                                "SELECT id FROM topics WHERE name = ?"
-                        );
-                        getTopicIdPs.setString(1, selectedTopic);
-                        ResultSet rs = getTopicIdPs.executeQuery();
-                        if (rs.next()) {
-                            long topicId = rs.getLong("id");
 
-                            // activity_log tablosundaki ilişkili kayıtları sil
-                            PreparedStatement deleteActivityLogPs = connection.prepareStatement(
-                                    "DELETE FROM activity_log WHERE topic_id = ?"
-                            );
-                            deleteActivityLogPs.setLong(1, topicId);
-                            deleteActivityLogPs.executeUpdate();
-                        }
-
-                        // Ardından topic tablosundaki kaydı sil
-                        PreparedStatement deleteTopicPs = connection.prepareStatement(
-                                "DELETE FROM topics WHERE name = ?"
-                        );
-                        deleteTopicPs.setString(1, selectedTopic);
-                        deleteTopicPs.executeUpdate();
-
+                    if(database.deleteTopic(selectedTopic)) {
                         // Listeyi ve tabloyu güncelle
                         topics.remove(selectedTopic);
                         listModel.removeElement(selectedTopic);
-                        updateTable();
-                    } catch (SQLException ex) {
-                        ex.printStackTrace();
+                        updateTable(database.getConnection());
                     }
+
+
                 }
+
+
 
 
 
@@ -599,17 +410,12 @@ public class App {
             if (selectedTopic != null) {
                 String newTopicName = JOptionPane.showInputDialog(manageFrame, bundle.getString("dialog.label.rename.topic.name"), selectedTopic);
                 if (newTopicName != null && !newTopicName.trim().isEmpty() && !topics.contains(newTopicName)) {
-                    try {
-                        PreparedStatement ps = connection.prepareStatement("UPDATE topics SET name = ? WHERE name = ?");
-                        ps.setString(1, newTopicName);
-                        ps.setString(2, selectedTopic);
-                        ps.executeUpdate();
+                    if(database.updateTopic(newTopicName, selectedTopic)) {
                         topics.set(topics.indexOf(selectedTopic), newTopicName);
                         listModel.set(listModel.indexOf(selectedTopic), newTopicName);
-                        updateTable();
-                    } catch (SQLException ex) {
-                        ex.printStackTrace();
+                        updateTable(database.getConnection());
                     }
+
                 }
             }
         });
@@ -627,30 +433,7 @@ public class App {
 
 
 
-    // db
-    private void updateCellContent(long topicId, String date, String content) {
-        long currentDateAsEpoch = Instant.now().toEpochMilli();
 
-        try {
-            PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO activity_log (topic_id, date, is_marked, content, created, modified, is_deleted) " +
-                            "VALUES (?, ?, 0, ?, ?, ?, 0) " +
-                            "ON CONFLICT(topic_id, date) DO UPDATE SET content = ?, modified = ?"
-            );
-            ps.setLong(1, topicId);
-            ps.setString(2, date);
-            ps.setString(3, content); // İlk ekleme için content değeri
-            ps.setLong(4, currentDateAsEpoch);
-            ps.setLong(5, currentDateAsEpoch);
-
-            ps.setString(6, content); // Eğer mevcutsa content'i güncelle
-            ps.setLong(7, currentDateAsEpoch);
-
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
 
 
 
