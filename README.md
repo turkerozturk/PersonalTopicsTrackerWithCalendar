@@ -1,3 +1,6 @@
+[!IMPORTANT]  
+2025-03-20: From now on, the result fat jar of this project is loadable by MoreThanPomodoro project as a module. If anyone wants to use this as standalone project, to compile this without errors, get the dependency codes of mtp-glugin-api from MoreThanPomodoro project, or remove it from pom.xml, from META-INF\services, from TopicsTrackerPanel.java interface implementation.
+
 # Personal Topics Tracker with Calendar - Türker Öztürk
 
 Personal Topics Tracker with Calendar is a desktop application designed to help you track your daily activities, workouts, and other topics in an easy-to-use calendar view. The application allows you to log, update, and analyze your progress across various topics on a monthly basis.
