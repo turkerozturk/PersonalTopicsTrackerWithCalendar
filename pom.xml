@@ -16,6 +16,15 @@
   </properties>
 
   <dependencies>
+
+
+    <dependency>
+      <groupId>com.turkerozturk</groupId>
+      <artifactId>mtp-plugin-api</artifactId>
+      <version>1.0-SNAPSHOT</version>
+      <scope>compile</scope>
+    </dependency>
+
     <!-- SQLite JDBC -->
     <dependency>
       <groupId>org.xerial</groupId>

@@ -19,7 +19,6 @@ public class Database {
 
     public void setupDatabase() {
         try {
-            connection = DriverManager.getConnection("jdbc:sqlite:calendar_tracker.db");
             Statement statement = connection.createStatement();
 
             statement.execute("    CREATE TABLE IF NOT EXISTS activity_log (\n" +
