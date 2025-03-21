@@ -6,7 +6,16 @@
   <packaging>jar</packaging>
   <version>1.0-SNAPSHOT</version>
   <name>PersonalTopicsTrackerWithCalendar</name>
-  <url>http://maven.apache.org</url>
+  <description>An extension module for tracking personal topics</description>
+  <url>https://github.com/turkerozturk/PersonalTopicsTrackerWithCalendar</url>
+
+  <licenses>
+    <license>
+      <name>GNU General Public License, Version 3</name>
+      <url>https://www.gnu.org/licenses/gpl-3.0.en.html</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
 
   <!-- Properties to define encoding and Java version -->
   <properties>
